@@ -46,6 +46,54 @@ app.get("/", (req, res) => {
   res.send("🚀 BiblioDrop Server Running");
 });
 
+// GET BROWSE BOOOK
+
+// GET SINGLE BOOK DETAILS
+
+app.get("/books/:id", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    console.log("Received ID:", id);
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).send({
+        success: false,
+
+        message: "Invalid book id",
+      });
+    }
+
+    const book = await booksCollection.findOne({
+      _id: new ObjectId(id),
+    });
+
+    console.log("Found Book:", book);
+
+    if (!book) {
+      return res.status(404).send({
+        success: false,
+
+        message: "Book not found",
+      });
+    }
+
+    res.send({
+      success: true,
+
+      book,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+
+      message: "Failed to fetch book details",
+    });
+  }
+});
+
 // ==============================
 // LIBRARIAN ROUTE
 // ==============================
@@ -106,7 +154,7 @@ app.get(
 
 // UPDATE BOOK STATUS
 app.patch(
-  "/librarian/books/:id",
+  "/librarian/books/:id/status",
 
   async (req, res) => {
     try {
@@ -114,47 +162,97 @@ app.patch(
 
       const { status } = req.body;
 
-
       const result = await booksCollection.updateOne(
-
         {
           _id: new ObjectId(id),
         },
 
         {
-          $set:{
-            status
-          }
-        }
-
+          $set: {
+            status,
+          },
+        },
       );
 
-
       res.send({
+        success: true,
 
-        success:true,
-
-        result
-
+        result,
       });
-
-
-    } catch(error){
-
+    } catch (error) {
       console.log(error);
 
-
       res.status(500).send({
+        success: false,
 
-        success:false,
+        message: "Status update failed",
+      });
+    }
+  },
+);
 
-        message:"Status update failed"
+// DELETE BOOK
+app.delete(
+  "/librarian/books/:id",
 
+  async (req, res) => {
+    try {
+      const id = req.params.id;
+
+      const result = await booksCollection.deleteOne({
+        _id: new ObjectId(id),
       });
 
-    }
+      res.send({
+        success: true,
+        deletedCount: result.deletedCount,
+      });
+    } catch (error) {
+      console.log(error);
 
-  }
+      res.status(500).send({
+        success: false,
+        message: "Delete failed",
+      });
+    }
+  },
+);
+
+// EDIT API
+app.patch(
+  "/librarian/books/:id",
+
+  async (req, res) => {
+    try {
+      const id = req.params.id;
+
+      const updatedBook = req.body;
+
+      const result = await booksCollection.updateOne(
+        {
+          _id: new ObjectId(id),
+        },
+
+        {
+          $set: updatedBook,
+        },
+      );
+
+      res.send({
+        success: true,
+
+        modifiedCount: result.modifiedCount,
+      });
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).send({
+        success: false,
+
+        message: "Update failed",
+      });
+    }
+  },
 );
 
 // SERVER STUTAS
