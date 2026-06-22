@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 
 require("dotenv").config();
 
@@ -86,7 +86,6 @@ app.post(
 );
 
 // GET BOOKS
-
 app.get(
   "/librarian/books",
 
@@ -105,7 +104,60 @@ app.get(
   },
 );
 
-// SERVER STUTAS 
+// UPDATE BOOK STATUS
+app.patch(
+  "/librarian/books/:id",
+
+  async (req, res) => {
+    try {
+      const id = req.params.id;
+
+      const { status } = req.body;
+
+
+      const result = await booksCollection.updateOne(
+
+        {
+          _id: new ObjectId(id),
+        },
+
+        {
+          $set:{
+            status
+          }
+        }
+
+      );
+
+
+      res.send({
+
+        success:true,
+
+        result
+
+      });
+
+
+    } catch(error){
+
+      console.log(error);
+
+
+      res.status(500).send({
+
+        success:false,
+
+        message:"Status update failed"
+
+      });
+
+    }
+
+  }
+);
+
+// SERVER STUTAS
 app.listen(port, async () => {
   await connectDB();
 
