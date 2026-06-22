@@ -1,56 +1,111 @@
 const express = require("express");
 const cors = require("cors");
 const { MongoClient, ServerApiVersion } = require("mongodb");
+
 require("dotenv").config();
 
 const app = express();
 
-// ================= MIDDLEWARE =================
-
 app.use(cors());
+
 app.use(express.json());
 
-// ================= CONFIG =================
-
 const port = process.env.PORT || 5000;
-const uri = process.env.MONGODB_URI;
 
-// ================= MONGO CLIENT =================
+const uri = process.env.MONGODB_URI;
 
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
-
     strict: true,
-
     deprecationErrors: true,
   },
 });
 
 let db;
 
-// ================= DATABASE CONNECT =================
+let booksCollection;
 
 async function connectDB() {
   if (db) return db;
 
   await client.connect();
 
-  db = client.db("BiblioDrop");
+  db = client.db("local-book-shop");
+
+  booksCollection = db.collection("books");
 
   console.log("✅ MongoDB Connected");
 
   return db;
 }
 
-// ================= HEALTH CHECK =================
+// HEALTH CHECK
 
 app.get("/", (req, res) => {
   res.send("🚀 BiblioDrop Server Running");
 });
 
-// ================= SERVER START =================
+// ==============================
+// LIBRARIAN ROUTE
+// ==============================
+// ADD BOOK
+app.post(
+  "/librarian/addbooks",
 
+  async (req, res) => {
+    try {
+      const book = req.body;
+
+      const newBook = {
+        ...book,
+
+        status: "Pending Approval",
+
+        createdAt: new Date(),
+      };
+
+      const result = await booksCollection.insertOne(newBook);
+      res.status(201).send({
+        success: true,
+
+        insertedId: result.insertedId,
+
+        message: "Book added successfully",
+      });
+    } catch (error) {
+      console.log(error);
+
+      res.status(500).send({
+        success: false,
+
+        message: "Failed to add book",
+      });
+    }
+  },
+);
+
+// GET BOOKS
+
+app.get(
+  "/librarian/books",
+
+  async (req, res) => {
+    try {
+      const result = await booksCollection.find().toArray();
+
+      res.send(result);
+    } catch (error) {
+      res.status(500).send({
+        success: false,
+
+        message: "Failed to fetch books",
+      });
+    }
+  },
+);
+
+// SERVER STUTAS 
 app.listen(port, async () => {
   await connectDB();
 
