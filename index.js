@@ -49,12 +49,9 @@ app.get("/", (req, res) => {
 // GET BROWSE BOOOK
 
 // GET SINGLE BOOK DETAILS
-
 app.get("/books/:id", async (req, res) => {
   try {
     const id = req.params.id;
-
-    console.log("Received ID:", id);
 
     if (!ObjectId.isValid(id)) {
       return res.status(400).send({
@@ -67,8 +64,6 @@ app.get("/books/:id", async (req, res) => {
     const book = await booksCollection.findOne({
       _id: new ObjectId(id),
     });
-
-    console.log("Found Book:", book);
 
     if (!book) {
       return res.status(404).send({
@@ -254,6 +249,93 @@ app.patch(
     }
   },
 );
+
+// DELIVERY STUTAS API'S
+// Controller:
+app.get("/deliveries/librarian/:email", async (req, res) => {
+  const email = req.params.email;
+
+  const result = await deliveryCollection
+    .find({
+      librarianEmail: email,
+    })
+    .toArray();
+
+  res.send(result);
+});
+
+// CREATE DELIVERY REQUEST
+app.post("/deliveries", async (req, res) => {
+  try {
+    const deliveryData = req.body;
+
+    const result = await deliveryCollection.insertOne(deliveryData);
+
+    res.send({
+      success: true,
+
+      message: "Delivery request created",
+
+      insertedId: result.insertedId,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+
+      message: "Failed to create delivery request",
+    });
+  }
+});
+
+// Status Update API
+app.patch("/deliveries/:id/status", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const { status } = req.body;
+
+    const result = await deliveryCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+      },
+
+      {
+        $set: {
+          status: status,
+        },
+      },
+    );
+
+    res.send({
+      success: true,
+
+      result,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+
+      message: "Status update failed",
+    });
+  }
+});
+
+// User delivery history API:
+app.get("/deliveries/user/:email", async (req, res) => {
+  const email = req.params.email;
+
+  const result = await deliveryCollection
+    .find({
+      userEmail: email,
+    })
+    .toArray();
+
+  res.send(result);
+});
 
 // SERVER STUTAS
 app.listen(port, async () => {
