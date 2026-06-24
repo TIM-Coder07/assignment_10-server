@@ -6,7 +6,12 @@ require("dotenv").config();
 
 const app = express();
 
-app.use(cors());
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+    credentials: true,
+  })
+);
 
 app.use(express.json());
 
@@ -26,6 +31,7 @@ let db;
 
 let booksCollection;
 let deliveryCollection;
+let reviewsCollection;
 
 async function connectDB() {
   if (db) return db;
@@ -36,6 +42,8 @@ async function connectDB() {
 
   booksCollection = db.collection("books");
   deliveryCollection = db.collection("deliveries");
+  reviewsCollection = db.collection("reviews")
+  
 
   console.log("✅ MongoDB Connected");
 
@@ -271,8 +279,7 @@ app.post("/deliveries", async (req, res) => {
     const deliveryData = req.body;
 
     const result = await deliveryCollection.insertOne(deliveryData);
-    console.log("INSERT RESULT:", result)
-    
+    console.log("INSERT RESULT:", result);
 
     res.send({
       success: true,
@@ -339,6 +346,145 @@ app.get("/deliveries/user/:email", async (req, res) => {
 
   res.send(result);
 });
+
+// User ReadList
+app.get("/deliveries/user/:email/delivered", async (req, res) => {
+  const email = req.params.email;
+
+  const result = await deliveryCollection
+    .find({
+      userEmail: email,
+      status: "Delivered",
+    })
+    .toArray();
+
+  res.send(result);
+});
+
+// USER REVIEW API's
+// Get Review's
+app.get("/reviews/:bookId", async (req, res) => {
+  try {
+    const { bookId } = req.params;
+
+    const result = await reviewsCollection
+      .find({ bookId })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send(error);
+  }
+});
+
+// POST Review's
+app.post("/reviews", async (req, res) => {
+  try {
+    const review = req.body;
+
+    const { bookId, userEmail } = review;
+
+    // Verify delivered book
+    const deliveredBook = await deliveryCollection.findOne({
+      bookId,
+      userEmail,
+      status: "Delivered",
+    });
+
+    if (!deliveredBook) {
+      return res.status(403).send({
+        success: false,
+        message: "Only delivered books can be reviewed",
+      });
+    }
+
+    // Prevent duplicate review
+    const existingReview = await reviewsCollection.findOne({
+      bookId,
+      userEmail,
+    });
+
+    if (existingReview) {
+      return res.status(400).send({
+        success: false,
+        message: "You already reviewed this book",
+      });
+    }
+
+    review.createdAt = new Date();
+    review.updatedAt = new Date();
+
+    const result = await reviewsCollection.insertOne(review);
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: error.message,
+    });
+  }
+});
+
+// Get My Reviews
+app.get("/my-reviews/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    const result = await reviewsCollection
+      .find({ userEmail: email })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send(error);
+  }
+});
+
+// Update Review
+app.patch("/reviews/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { rating, comment } = req.body;
+
+    const result = await reviewsCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+      },
+      {
+        $set: {
+          rating,
+          comment,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send(error);
+  }
+});
+
+// Delete Review
+app.delete("/reviews/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await reviewsCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.send(result);
+  } catch (error) {
+    res.status(500).send(error);
+  }
+});
+
+
+
 
 // SERVER STUTAS
 app.listen(port, async () => {
