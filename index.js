@@ -25,6 +25,7 @@ const client = new MongoClient(uri, {
 let db;
 
 let booksCollection;
+let deliveryCollection;
 
 async function connectDB() {
   if (db) return db;
@@ -34,6 +35,7 @@ async function connectDB() {
   db = client.db("local-book-shop");
 
   booksCollection = db.collection("books");
+  deliveryCollection = db.collection("deliveries");
 
   console.log("✅ MongoDB Connected");
 
@@ -41,7 +43,6 @@ async function connectDB() {
 }
 
 // HEALTH CHECK
-
 app.get("/", (req, res) => {
   res.send("🚀 BiblioDrop Server Running");
 });
@@ -270,6 +271,8 @@ app.post("/deliveries", async (req, res) => {
     const deliveryData = req.body;
 
     const result = await deliveryCollection.insertOne(deliveryData);
+    console.log("INSERT RESULT:", result)
+    
 
     res.send({
       success: true,
