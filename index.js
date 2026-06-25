@@ -10,7 +10,7 @@ app.use(
   cors({
     origin: "http://localhost:3000",
     credentials: true,
-  })
+  }),
 );
 
 app.use(express.json());
@@ -42,8 +42,7 @@ async function connectDB() {
 
   booksCollection = db.collection("books");
   deliveryCollection = db.collection("deliveries");
-  reviewsCollection = db.collection("reviews")
-  
+  reviewsCollection = db.collection("reviews");
 
   console.log("✅ MongoDB Connected");
 
@@ -259,6 +258,144 @@ app.patch(
   },
 );
 
+//Librarian OverView Route
+app.get("/librarian/overview/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    // Total Books Listed
+    const totalBooksListed = await booksCollection.countDocuments({
+      librarianEmail: email,
+    });
+
+    // All deliveries of this librarian
+    const deliveries = await deliveryCollection
+      .find({
+        librarianEmail: email,
+      })
+      .toArray();
+
+    // Total Earnings
+    const totalEarnings = deliveries
+      .filter((item) => item.status === "Delivered")
+      .reduce((sum, item) => sum + Number(item.deliveryFee || 0), 0);
+
+    // Pending Requests
+    const activePendingRequests = deliveries.filter(
+      (item) => item.status === "Pending",
+    ).length;
+
+    // Most Requested Books
+    const mostRequestedBooks = await deliveryCollection
+      .aggregate([
+        {
+          $match: {
+            librarianEmail: email,
+          },
+        },
+        {
+          $group: {
+            _id: "$bookTitle",
+            requestCount: {
+              $sum: 1,
+            },
+          },
+        },
+        {
+          $sort: {
+            requestCount: -1,
+          },
+        },
+        {
+          $limit: 5,
+        },
+      ])
+      .toArray();
+
+    // Chart Data
+    const chartData = mostRequestedBooks.map((book) => ({
+      title: book._id,
+      requests: book.requestCount,
+    }));
+
+    res.send({
+      totalBooksListed,
+      totalEarnings,
+      activePendingRequests,
+      mostRequestedBooks,
+      chartData,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to load overview data",
+    });
+  }
+});
+
+// User OverView Route
+app.get("/user/overview/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    const deliveries = await deliveryCollection
+      .find({
+        userEmail: email,
+      })
+      .toArray();
+
+    // Total Books Read
+    const totalBooksRead = deliveries.filter(
+      (item) => item.status === "Delivered"
+    ).length;
+
+    // Pending Deliveries
+    const pendingDeliveries = deliveries.filter(
+      (item) => item.status === "Pending"
+    ).length;
+
+    // Total Spent on Fees
+    const totalSpent = deliveries.reduce(
+      (sum, item) => sum + Number(item.deliveryFee || 0),
+      0
+    );
+
+    // Chart Data (Books by Status)
+    const chartData = [
+      {
+        month: "Delivered",
+        books: totalBooksRead,
+      },
+      {
+        month: "Pending",
+        books: pendingDeliveries,
+      },
+      {
+        month: "Total Requests",
+        books: deliveries.length,
+      },
+    ];
+
+    res.send({
+      totalBooksRead,
+      pendingDeliveries,
+      totalSpent,
+      chartData,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to load user overview",
+    });
+  }
+});
+
+
+
 // DELIVERY STUTAS API'S
 // Controller:
 app.get("/deliveries/librarian/:email", async (req, res) => {
@@ -459,7 +596,7 @@ app.patch("/reviews/:id", async (req, res) => {
           comment,
           updatedAt: new Date(),
         },
-      }
+      },
     );
 
     res.send(result);
@@ -482,9 +619,6 @@ app.delete("/reviews/:id", async (req, res) => {
     res.status(500).send(error);
   }
 });
-
-
-
 
 // SERVER STUTAS
 app.listen(port, async () => {
