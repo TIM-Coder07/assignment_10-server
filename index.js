@@ -1,6 +1,6 @@
 const express = require("express");
 const cors = require("cors");
-const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId, Admin } = require("mongodb");
 
 require("dotenv").config();
 
@@ -32,6 +32,7 @@ let db;
 let booksCollection;
 let deliveryCollection;
 let reviewsCollection;
+let usersCollection;
 
 async function connectDB() {
   if (db) return db;
@@ -43,6 +44,7 @@ async function connectDB() {
   booksCollection = db.collection("books");
   deliveryCollection = db.collection("deliveries");
   reviewsCollection = db.collection("reviews");
+  usersCollection = db.collection("users");
 
   console.log("✅ MongoDB Connected");
 
@@ -55,6 +57,15 @@ app.get("/", (req, res) => {
 });
 
 // GET BROWSE BOOOK
+app.get("/books", async (req, res) => {
+  const books = await booksCollection
+    .find({
+      status: "Published",
+    })
+    .toArray();
+
+  res.send(books);
+});
 
 // GET SINGLE BOOK DETAILS
 app.get("/books/:id", async (req, res) => {
@@ -97,44 +108,299 @@ app.get("/books/:id", async (req, res) => {
   }
 });
 
+// Published Browse Books API
+app.get("/books", async (req, res) => {
+  try {
+    const books = await booksCollection
+      .find({
+        status: "Published",
+      })
+      .toArray();
+
+    res.send(books);
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch books",
+    });
+  }
+});
+
+// ==============================
+// ADMIN ROUTE
+// ==============================
+// Admin OverView Route
+app.get("/admin/overview", async (req, res) => {
+  try {
+    const totalUsers = await usersCollection.countDocuments();
+
+    const totalBooks = await booksCollection.countDocuments();
+
+    const totalDeliveries = await deliveryCollection.countDocuments();
+
+    const deliveredOrders = await deliveryCollection
+      .find({
+        status: "Delivered",
+      })
+      .toArray();
+
+    const totalRevenue = deliveredOrders.reduce(
+      (sum, item) => sum + Number(item.deliveryFee || 0),
+      0,
+    );
+
+    const booksByCategory = await booksCollection
+      .aggregate([
+        {
+          $group: {
+            _id: "$category",
+            count: {
+              $sum: 1,
+            },
+          },
+        },
+      ])
+      .toArray();
+
+    res.send({
+      totalUsers,
+      totalBooks,
+      totalDeliveries,
+      totalRevenue,
+
+      booksByCategory: booksByCategory.map((item) => ({
+        category: item._id,
+        count: item.count,
+      })),
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to load admin overview",
+    });
+  }
+});
+
+// Get All Pending Books
+app.get("/admin/pending-books", async (req, res) => {
+  try {
+    const books = await booksCollection
+      .find({
+        status: "Pending Approval",
+      })
+      .sort({
+        createdAt: -1,
+      })
+      .toArray();
+
+    res.send(books);
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch pending books",
+    });
+  }
+});
+
+// Approve Book
+app.patch("/admin/books/:id/approve", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await booksCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+      },
+      {
+        $set: {
+          status: "Published",
+          approvedAt: new Date(),
+        },
+      },
+    );
+
+    res.send({
+      success: true,
+      modifiedCount: result.modifiedCount,
+      message: "Book approved successfully",
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Approval failed",
+    });
+  }
+});
+
+// Admin Reject Book
+app.patch("/admin/books/:id/reject", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await booksCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+      },
+      {
+        $set: {
+          status: "Rejected",
+          rejectedAt: new Date(),
+        },
+      },
+    );
+
+    res.send({
+      success: true,
+      modifiedCount: result.modifiedCount,
+      message: "Book rejected",
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Reject failed",
+    });
+  }
+});
+
+// Admin Delete
+app.delete("/admin/books/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await booksCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.send({
+      success: true,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Delete failed",
+    });
+  }
+});
+
+// Get All Users by ADMIN
+app.get("/admin/users", async (req, res) => {
+  try {
+    const users = await usersCollection
+      .find()
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    res.send(users);
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch users",
+    });
+  }
+});
+
+// Change User Role by ADMIN
+app.patch("/admin/users/:id/role", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const { role } = req.body;
+
+    const allowedRoles = ["User", "Librarian", "Admin"];
+
+    if (!allowedRoles.includes(role)) {
+      return res.status(400).send({
+        success: false,
+        message: "Invalid role",
+      });
+    }
+
+    const result = await usersCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+      },
+      {
+        $set: {
+          role,
+          updatedAt: new Date(),
+        },
+      }
+    );
+
+    res.send({
+      success: true,
+      modifiedCount: result.modifiedCount,
+      message: "Role updated successfully",
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to update role",
+    });
+  }
+});
+
+// Delete User by ADMIN
+app.delete("/admin/users/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await usersCollection.deleteOne({
+      _id: new ObjectId(id),
+    });
+
+    res.send({
+      success: true,
+      deletedCount: result.deletedCount,
+      message: "User deleted successfully",
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to delete user",
+    });
+  }
+});
+
+
 // ==============================
 // LIBRARIAN ROUTE
 // ==============================
+
 // ADD BOOK
-app.post(
-  "/librarian/addbooks",
+app.post("/librarian/addbooks", async (req, res) => {
+  try {
+    const book = req.body;
 
-  async (req, res) => {
-    try {
-      const book = req.body;
+    const newBook = {
+      ...book,
+      status: "Pending Approval",
+      createdAt: new Date(),
+    };
 
-      const newBook = {
-        ...book,
+    const result = await booksCollection.insertOne(newBook);
 
-        status: "Pending Approval",
-
-        createdAt: new Date(),
-      };
-
-      const result = await booksCollection.insertOne(newBook);
-      res.status(201).send({
-        success: true,
-
-        insertedId: result.insertedId,
-
-        message: "Book added successfully",
-      });
-    } catch (error) {
-      console.log(error);
-
-      res.status(500).send({
-        success: false,
-
-        message: "Failed to add book",
-      });
-    }
-  },
-);
+    res.status(201).send({
+      success: true,
+      insertedId: result.insertedId,
+      message: "Book submitted for admin approval",
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to add book",
+    });
+  }
+});
 
 // GET BOOKS
 app.get(
@@ -155,46 +421,31 @@ app.get(
   },
 );
 
-// UPDATE BOOK STATUS
-app.patch(
-  "/librarian/books/:id/status",
+// Librarian My Books
+app.get("/librarian/books/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
 
-  async (req, res) => {
-    try {
-      const id = req.params.id;
+    const books = await booksCollection
+      .find({
+        librarianEmail: email,
+      })
+      .sort({
+        createdAt: -1,
+      })
+      .toArray();
 
-      const { status } = req.body;
-
-      const result = await booksCollection.updateOne(
-        {
-          _id: new ObjectId(id),
-        },
-
-        {
-          $set: {
-            status,
-          },
-        },
-      );
-
-      res.send({
-        success: true,
-
-        result,
-      });
-    } catch (error) {
-      console.log(error);
-
-      res.status(500).send({
-        success: false,
-
-        message: "Status update failed",
-      });
-    }
-  },
-);
+    res.send(books);
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch books",
+    });
+  }
+});
 
 // DELETE BOOK
+
 app.delete(
   "/librarian/books/:id",
 
@@ -222,41 +473,38 @@ app.delete(
 );
 
 // EDIT API
-app.patch(
-  "/librarian/books/:id",
+app.patch("/librarian/books/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
 
-  async (req, res) => {
-    try {
-      const id = req.params.id;
+    const updatedBook = req.body;
 
-      const updatedBook = req.body;
+    // Prevent librarian from changing approval fields
+    updatedBook.status = "Pending Approval";
+    delete updatedBook.status;
+    delete updatedBook.approvedAt;
+    delete updatedBook.rejectedAt;
 
-      const result = await booksCollection.updateOne(
-        {
-          _id: new ObjectId(id),
-        },
+    const result = await booksCollection.updateOne(
+      {
+        _id: new ObjectId(id),
+      },
+      {
+        $set: updatedBook,
+      },
+    );
 
-        {
-          $set: updatedBook,
-        },
-      );
-
-      res.send({
-        success: true,
-
-        modifiedCount: result.modifiedCount,
-      });
-    } catch (error) {
-      console.log(error);
-
-      res.status(500).send({
-        success: false,
-
-        message: "Update failed",
-      });
-    }
-  },
-);
+    res.send({
+      success: true,
+      modifiedCount: result.modifiedCount,
+    });
+  } catch (error) {
+    res.status(500).send({
+      success: false,
+      message: "Update failed",
+    });
+  }
+});
 
 //Librarian OverView Route
 app.get("/librarian/overview/:email", async (req, res) => {
@@ -334,67 +582,6 @@ app.get("/librarian/overview/:email", async (req, res) => {
     });
   }
 });
-
-// User OverView Route
-app.get("/user/overview/:email", async (req, res) => {
-  try {
-    const { email } = req.params;
-
-    const deliveries = await deliveryCollection
-      .find({
-        userEmail: email,
-      })
-      .toArray();
-
-    // Total Books Read
-    const totalBooksRead = deliveries.filter(
-      (item) => item.status === "Delivered"
-    ).length;
-
-    // Pending Deliveries
-    const pendingDeliveries = deliveries.filter(
-      (item) => item.status === "Pending"
-    ).length;
-
-    // Total Spent on Fees
-    const totalSpent = deliveries.reduce(
-      (sum, item) => sum + Number(item.deliveryFee || 0),
-      0
-    );
-
-    // Chart Data (Books by Status)
-    const chartData = [
-      {
-        month: "Delivered",
-        books: totalBooksRead,
-      },
-      {
-        month: "Pending",
-        books: pendingDeliveries,
-      },
-      {
-        month: "Total Requests",
-        books: deliveries.length,
-      },
-    ];
-
-    res.send({
-      totalBooksRead,
-      pendingDeliveries,
-      totalSpent,
-      chartData,
-    });
-  } catch (error) {
-    console.log(error);
-
-    res.status(500).send({
-      success: false,
-      message: "Failed to load user overview",
-    });
-  }
-});
-
-
 
 // DELIVERY STUTAS API'S
 // Controller:
@@ -499,6 +686,66 @@ app.get("/deliveries/user/:email/delivered", async (req, res) => {
 });
 
 // USER REVIEW API's
+// ------------------------------------
+// User OverView Route
+app.get("/user/overview/:email", async (req, res) => {
+  try {
+    const { email } = req.params;
+
+    const deliveries = await deliveryCollection
+      .find({
+        userEmail: email,
+      })
+      .toArray();
+
+    // Total Books Read
+    const totalBooksRead = deliveries.filter(
+      (item) => item.status === "Delivered",
+    ).length;
+
+    // Pending Deliveries
+    const pendingDeliveries = deliveries.filter(
+      (item) => item.status === "Pending",
+    ).length;
+
+    // Total Spent on Fees
+    const totalSpent = deliveries.reduce(
+      (sum, item) => sum + Number(item.deliveryFee || 0),
+      0,
+    );
+
+    // Chart Data (Books by Status)
+    const chartData = [
+      {
+        month: "Delivered",
+        books: totalBooksRead,
+      },
+      {
+        month: "Pending",
+        books: pendingDeliveries,
+      },
+      {
+        month: "Total Requests",
+        books: deliveries.length,
+      },
+    ];
+
+    res.send({
+      totalBooksRead,
+      pendingDeliveries,
+      totalSpent,
+      chartData,
+    });
+  } catch (error) {
+    console.log(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to load user overview",
+    });
+  }
+});
+
 // Get Review's
 app.get("/reviews/:bookId", async (req, res) => {
   try {
