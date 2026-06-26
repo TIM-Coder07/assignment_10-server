@@ -44,7 +44,7 @@ async function connectDB() {
   booksCollection = db.collection("books");
   deliveryCollection = db.collection("deliveries");
   reviewsCollection = db.collection("reviews");
-  usersCollection = db.collection("users");
+  usersCollection = db.collection("user");
 
   console.log("✅ MongoDB Connected");
 
@@ -56,6 +56,7 @@ app.get("/", (req, res) => {
   res.send("🚀 BiblioDrop Server Running");
 });
 
+// =============================
 // GET BROWSE BOOOK
 app.get("/books", async (req, res) => {
   const books = await booksCollection
@@ -285,23 +286,16 @@ app.delete("/admin/books/:id", async (req, res) => {
   }
 });
 
+// ADMIN ACTION =====================>
+
 // Get All Users by ADMIN
 app.get("/admin/users", async (req, res) => {
-  try {
-    const users = await usersCollection
-      .find()
-      .sort({ createdAt: -1 })
-      .toArray();
+  const user = await usersCollection.find().toArray();
 
-    res.send(users);
-  } catch (error) {
-    console.log(error);
+  console.log("Users from DB:", user);
+  console.log("DB Name:", db.databaseName);
 
-    res.status(500).send({
-      success: false,
-      message: "Failed to fetch users",
-    });
-  }
+  res.send(user);
 });
 
 // Change User Role by ADMIN
@@ -370,6 +364,9 @@ app.delete("/admin/users/:id", async (req, res) => {
     });
   }
 });
+
+
+
 
 
 // ==============================
