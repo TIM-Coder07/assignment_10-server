@@ -1,7 +1,8 @@
 const express = require("express");
 const cors = require("cors");
-const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId, Admin } = require("mongodb");
+const { createRemoteJWKSet,jwtVerify } = require("jose-cjs");
+
 
 require("dotenv").config();
 
@@ -9,7 +10,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: "*",
     credentials: true,
   }),
 );
@@ -28,6 +29,11 @@ const client = new MongoClient(uri, {
   },
 });
 
+  // create Remote JWK Set------------
+const JWKS = createRemoteJWKSet(
+  new URL(`${process.env.CLIENT_URL}/api/auth/jwks`)
+);
+
 let db;
 
 let booksCollection;
@@ -36,32 +42,40 @@ let reviewsCollection;
 let usersCollection;
 
   // ------------------VERIFY JWT TOKEN-----------------
-  const verifyToken = (req, res, next) => {
-    const authHeader = req?.headers.authorization;
-    console.log(authHeader);
-    
+  const verifyToken = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
 
-    if (!authHeader) {
-      return res.status(401).send({
-        success: false,
-        message: "Unauthorized",
-      });
-    }
+  console.log("Authorization:", authHeader);
 
-    const token = authHeader.split(" ")[1];
-
-    jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-      if (err) {
-        return res.status(401).send({
-          success: false,
-          message: "Invalid token",
-        });
-      }
-
-      req.user = decoded;
-      next();
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).send({
+      success: false,
+      message: "Unauthorized",
     });
-  };
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  console.log("Token:", token);
+
+  try {
+    const { payload } = await jwtVerify(token, JWKS);
+
+    console.log("Decoded:", payload);
+
+    req.user = payload;
+    next();
+  } catch (error) {
+  console.error(error);
+  console.error(error.code);
+  console.error(error.message);
+
+  return res.status(401).send({
+    success: false,
+    message: "Invalid token",
+  });
+}
+};
   // ------------------VERIFY JWT TOKEN-----------------
 
 async function connectDB() {
