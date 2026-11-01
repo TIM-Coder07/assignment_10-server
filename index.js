@@ -175,32 +175,72 @@ async function connectDB() {
     }
   });
 
-  // =============================
-  // GET BROWSE BOOOK
-  app.get("/books", async (req, res) => {
-    try {
-      const limit = parseInt(req.query.limit);
+// =============================
+  // GET BROWSE BOOKS + FILTERS
+// =============================
+app.get("/books", async (req, res) => {
+  try {
+    const {
+      search = "",
+      category = "",
+      availability = "",
+      deliveryFee = "",
+      limit,
+    } = req.query;
 
-      const cursor = booksCollection.find({
-        status: "Published",
-      });
+    const filter = {
+      status: "Published",
+    };
 
-      if (!isNaN(limit)) {
-        cursor.limit(limit);
-      }
-
-      const books = await cursor.toArray();
-
-      res.send(books);
-    } catch (error) {
-      console.log(error);
-
-      res.status(500).send({
-        success: false,
-        message: "Failed to fetch books",
-      });
+    // Search
+    if (search.trim()) {
+      filter.title = {
+        $regex: search.trim(),
+        $options: "i",
+      };
     }
-  });
+
+    // Category
+    if (category && category !== "All") {
+      filter.category = category;
+    }
+
+    // Availability
+    if (availability && availability !== "All") {
+      filter.availability = availability;
+    }
+
+    // Delivery Fee
+    if (deliveryFee === "Free") {
+      filter.deliveryFee = 0;
+    } else if (deliveryFee === "0-50") {
+      filter.deliveryFee = { $gte: 0, $lte: 50 };
+    } else if (deliveryFee === "51-100") {
+      filter.deliveryFee = { $gte: 51, $lte: 100 };
+    } else if (deliveryFee === "100+") {
+      filter.deliveryFee = { $gt: 100 };
+    }
+
+    let cursor = booksCollection.find(filter);
+
+    const parsedLimit = Number(limit);
+
+    if (limit && Number.isInteger(parsedLimit) && parsedLimit > 0) {
+      cursor = cursor.limit(parsedLimit);
+    }
+
+    const books = await cursor.toArray();
+
+    res.send(books);
+  } catch (error) {
+    console.error(error);
+
+    res.status(500).send({
+      success: false,
+      message: "Failed to fetch books",
+    });
+  }
+});
 
   // GET SINGLE BOOK DETAILS
   app.get("/books/:id", verifyToken, async (req, res) => {
